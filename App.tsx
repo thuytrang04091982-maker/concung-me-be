@@ -22,46 +22,39 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(true);
   const [transactionType, setTransactionType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
-  // Khởi tạo app và nạp session từ "Cloud"
   useEffect(() => {
     const initApp = async () => {
       setIsSyncing(true);
-      const user = await CloudAPI.getCurrentUser();
-      if (user) {
-        setCurrentUser(user);
-        setCurrentScreen('HOME');
+      try {
+        const user = await CloudAPI.getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+          setCurrentScreen('HOME');
+        }
+      } catch (e) {
+        console.error("Lỗi khởi tạo:", e);
+      } finally {
+        setIsSyncing(false);
       }
-      
-      // Đảm bảo có Admin mặc định
-      const users = await CloudAPI.getUsers();
-      if (!users.find(u => u.phone === '0000')) {
-        users.push({
-          name: 'Quản trị viên',
-          phone: '0000',
-          balance: 999999999,
-          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
-          password: 'admin',
-          banks: [],
-          isAdmin: true
-        });
-        await CloudAPI.saveUsers(users);
-      }
-      setIsSyncing(false);
     };
     initApp();
   }, []);
 
-  // Watcher: Đồng bộ hóa trạng thái tài khoản thời gian thực
+  // Real-time Watcher: Cập nhật thông tin mẹ ngay lập tức nếu Admin sửa trên Cloud
   useEffect(() => {
     if (!currentUser) return;
 
     const syncInterval = setInterval(async () => {
-      const users = await CloudAPI.getUsers();
-      const freshData = users.find(u => u.phone === currentUser.phone);
-      if (freshData && JSON.stringify(freshData) !== JSON.stringify(currentUser)) {
-        setCurrentUser(freshData);
+      try {
+        const users = await CloudAPI.getUsers();
+        const freshData = users.find(u => u.phone === currentUser.phone);
+        if (freshData && JSON.stringify(freshData) !== JSON.stringify(currentUser)) {
+          setCurrentUser(freshData);
+        }
+      } catch (e) {
+        console.warn("Mất kết nối Cloud tạm thời...");
       }
-    }, 3000);
+    }, 4000);
 
     return () => clearInterval(syncInterval);
   }, [currentUser]);
@@ -75,53 +68,61 @@ const App: React.FC = () => {
 
   const handleApproveTransaction = async (txId: string) => {
     setIsSyncing(true);
-    const txs = await CloudAPI.getTransactions();
-    const tx = txs.find(t => t.id === txId);
-    if (tx && tx.status === 'PENDING') {
-      const users = await CloudAPI.getUsers();
-      const userIdx = users.findIndex(u => u.phone === tx.userPhone);
-      
-      if (userIdx !== -1) {
-        users[userIdx].balance += (tx.type === 'DEPOSIT' ? tx.amount : -tx.amount);
-        tx.status = 'APPROVED';
+    try {
+      const txs = await CloudAPI.getTransactions();
+      const tx = txs.find(t => t.id === txId);
+      if (tx && tx.status === 'PENDING') {
+        const users = await CloudAPI.getUsers();
+        const user = users.find(u => u.phone === tx.userPhone);
         
-        await CloudAPI.saveUsers(users);
-        await CloudAPI.updateTransaction(tx);
-        await CloudAPI.addNotification(tx.userPhone, {
-          id: Date.now().toString(),
-          title: 'Giao dịch thành công',
-          content: `Lệnh ${tx.type === 'DEPOSIT' ? 'Nạp' : 'Rút'} ${tx.amount.toLocaleString()}đ đã được duyệt.`,
-          timestamp: Date.now(),
-          type: 'SUCCESS',
-          isRead: false
-        });
+        if (user) {
+          user.balance += (tx.type === 'DEPOSIT' ? tx.amount : -tx.amount);
+          tx.status = 'APPROVED';
+          
+          await CloudAPI.updateUser(user);
+          await CloudAPI.updateTransaction(tx);
+          await CloudAPI.addNotification(tx.userPhone, {
+            id: Date.now().toString(),
+            title: 'Giao dịch thành công',
+            content: `Lệnh ${tx.type === 'DEPOSIT' ? 'Nạp' : 'Rút'} ${tx.amount.toLocaleString()}đ đã được duyệt.`,
+            timestamp: Date.now(),
+            type: 'SUCCESS',
+            isRead: false
+          });
+        }
       }
+    } catch (e) {
+      alert("Lỗi phê duyệt: " + e);
     }
     setIsSyncing(false);
   };
 
   const handleRejectTransaction = async (txId: string, reason: string) => {
     setIsSyncing(true);
-    const txs = await CloudAPI.getTransactions();
-    const tx = txs.find(t => t.id === txId);
-    if (tx) {
-      tx.status = 'REJECTED';
-      tx.rejectionReason = reason;
-      await CloudAPI.updateTransaction(tx);
-      await CloudAPI.addNotification(tx.userPhone, {
-        id: Date.now().toString(),
-        title: 'Giao dịch thất bại',
-        content: `Lệnh giao dịch bị từ chối. Lý do: ${reason}`,
-        timestamp: Date.now(),
-        type: 'ERROR',
-        isRead: false
-      });
+    try {
+      const txs = await CloudAPI.getTransactions();
+      const tx = txs.find(t => t.id === txId);
+      if (tx) {
+        tx.status = 'REJECTED';
+        tx.rejectionReason = reason;
+        await CloudAPI.updateTransaction(tx);
+        await CloudAPI.addNotification(tx.userPhone, {
+          id: Date.now().toString(),
+          title: 'Giao dịch thất bại',
+          content: `Lệnh giao dịch bị từ chối. Lý do: ${reason}`,
+          timestamp: Date.now(),
+          type: 'ERROR',
+          isRead: false
+        });
+      }
+    } catch (e) {
+      alert("Lỗi từ chối: " + e);
     }
     setIsSyncing(false);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('mb_current_user');
+    localStorage.removeItem('mb_session_phone');
     setCurrentUser(null);
     setCurrentScreen('WELCOME');
   };
@@ -138,11 +139,10 @@ const App: React.FC = () => {
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-100">
       <div className="relative w-full max-w-[430px] aspect-[9/19.5] sm:aspect-[9/16] bg-white shadow-2xl overflow-hidden flex flex-col h-[100dvh]">
-        {/* Sync Indicator */}
         {isSyncing && (
-          <div className="absolute top-4 right-4 z-[1000] bg-white/80 backdrop-blur-md px-3 py-1 rounded-full shadow-sm border border-pink-50 flex items-center space-x-2 animate-fade-in">
+          <div className="absolute top-4 right-4 z-[1000] bg-white/80 backdrop-blur-md px-3 py-1 rounded-full shadow-sm border border-pink-50 flex items-center space-x-2">
             <Loader2 className="animate-spin text-pink-400" size={12} />
-            <span className="text-[10px] font-bold text-pink-400 uppercase tracking-tighter">Syncing</span>
+            <span className="text-[10px] font-bold text-pink-400 uppercase tracking-tighter">Đồng bộ Cloud</span>
           </div>
         )}
 
@@ -152,21 +152,32 @@ const App: React.FC = () => {
             switch (currentScreen) {
               case 'WELCOME': return <Welcome onNavigate={navigateTo} />;
               case 'REGISTER': return <Register onNavigate={navigateTo} onRegister={async (u) => {
-                const users = await CloudAPI.getUsers();
-                users.push(u);
-                await CloudAPI.saveUsers(users);
-                setCurrentUser(u);
-                localStorage.setItem('mb_current_user', JSON.stringify(u));
-                setCurrentScreen('HOME');
+                setIsSyncing(true);
+                try {
+                  await CloudAPI.createUser(u);
+                  setCurrentUser(u);
+                  localStorage.setItem('mb_session_phone', u.phone);
+                  setCurrentScreen('HOME');
+                } catch (e) {
+                  alert("Số điện thoại này đã tồn tại trên Cloud!");
+                }
+                setIsSyncing(false);
               }} />;
               case 'LOGIN': return <Login onNavigate={navigateTo} onLogin={async (p, pass) => {
-                const users = await CloudAPI.getUsers();
-                const u = users.find(user => user.phone === p && user.password === pass);
-                if (u) {
-                  setCurrentUser(u);
-                  localStorage.setItem('mb_current_user', JSON.stringify(u));
-                  setCurrentScreen('HOME');
-                  return true;
+                setIsSyncing(true);
+                try {
+                  const users = await CloudAPI.getUsers();
+                  const u = users.find(user => user.phone === p && user.password === pass);
+                  if (u) {
+                    setCurrentUser(u);
+                    localStorage.setItem('mb_session_phone', u.phone);
+                    setCurrentScreen('HOME');
+                    return true;
+                  }
+                } catch (e) {
+                  console.error(e);
+                } finally {
+                  setIsSyncing(false);
                 }
                 return false;
               }} />;

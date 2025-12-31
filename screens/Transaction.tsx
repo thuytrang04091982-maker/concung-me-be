@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Check, AlertCircle, Building2, DollarSign, Clock } from 'lucide-react';
 import { Screen, User, BankAccount, AppNotification, TransactionRecord } from '../types';
+import { CloudAPI } from '../services/api';
 
 interface TransactionProps {
   user: User;
@@ -20,7 +21,7 @@ const Transaction: React.FC<TransactionProps> = ({ user, type, onNavigate }) => 
   const isDeposit = type === 'DEPOSIT';
   const title = isDeposit ? 'Nạp tiền' : 'Rút tiền';
 
-  const handleTransaction = () => {
+  const handleTransaction = async () => {
     const numAmount = parseInt(amount);
     
     if (!numAmount || numAmount < 10000) {
@@ -43,9 +44,8 @@ const Transaction: React.FC<TransactionProps> = ({ user, type, onNavigate }) => 
 
     setStatus('LOADING');
     
-    setTimeout(() => {
-      // 1. Tạo bản ghi giao dịch cho Admin
-      const allTxs: TransactionRecord[] = JSON.parse(localStorage.getItem('mb_all_transactions') || '[]');
+    try {
+      // 1. Lưu giao dịch lên Cloud
       const newTx: TransactionRecord = {
         id: 'TX-' + Date.now(),
         userPhone: user.phone,
@@ -56,12 +56,10 @@ const Transaction: React.FC<TransactionProps> = ({ user, type, onNavigate }) => 
         status: 'PENDING',
         timestamp: Date.now()
       };
-      allTxs.push(newTx);
-      localStorage.setItem('mb_all_transactions', JSON.stringify(allTxs));
+      await CloudAPI.createTransaction(newTx);
 
-      // 2. Tạo thông báo "Đang chờ duyệt" cho User
-      const userNotifs: AppNotification[] = JSON.parse(localStorage.getItem(`mb_notifs_${user.phone}`) || '[]');
-      userNotifs.push({
+      // 2. Lưu thông báo lên Cloud
+      await CloudAPI.addNotification(user.phone, {
         id: Date.now().toString(),
         title: `Yêu cầu ${title.toLowerCase()} đang chờ`,
         content: `Mẹ vừa tạo yêu cầu ${title.toLowerCase()} ${numAmount.toLocaleString('vi-VN')}đ. Vui lòng đợi quản trị viên phê duyệt.`,
@@ -69,10 +67,12 @@ const Transaction: React.FC<TransactionProps> = ({ user, type, onNavigate }) => 
         type: 'PENDING',
         isRead: false
       });
-      localStorage.setItem(`mb_notifs_${user.phone}`, JSON.stringify(userNotifs));
 
       setStatus('PENDING_MODAL');
-    }, 1200);
+    } catch (e: any) {
+      setErrorMsg(e.message || "Lỗi kết nối Cloud");
+      setStatus('ERROR');
+    }
   };
 
   if (status === 'PENDING_MODAL') {

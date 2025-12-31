@@ -41,11 +41,8 @@ const Register: React.FC<RegisterProps> = ({ onNavigate, onRegister }) => {
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem('mb_users') || '[]');
-    if (users.some((u: any) => u.phone === formData.phone)) {
-      setError('Số điện thoại này đã được đăng ký trước đó');
-      return;
-    }
+    // Không kiểm tra localStorage ở đây nữa, App.tsx sẽ gọi CloudAPI để tạo user
+    // Nếu số điện thoại tồn tại, Supabase sẽ trả về lỗi và App.tsx sẽ alert.
 
     const newUser: UserType = {
       name: formData.name,

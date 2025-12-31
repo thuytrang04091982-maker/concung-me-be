@@ -1,71 +1,133 @@
 
 import { User, TransactionRecord, AppNotification, BankAccount } from '../types';
+import { supabase } from '../lib/supabase';
 
-// MÔ PHỎNG DATABASE ĐÁM MÂY (Cloud Simulation)
-// Để biến thành Real Database, bạn chỉ cần thay thế logic fetch/storage bằng Supabase/Firebase SDK.
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const checkSupabase = () => {
+  if (!supabase) {
+    throw new Error("Supabase chưa được kết nối. Mẹ vui lòng kiểm tra lại cấu hình URL!");
+  }
+};
 
 export const CloudAPI = {
   // --- USER API ---
   async getUsers(): Promise<User[]> {
-    await delay(500); // Giả lập độ trễ mạng
-    return JSON.parse(localStorage.getItem('mb_users') || '[]');
+    checkSupabase();
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+    if (error) throw error;
+    return data || [];
   },
 
-  async saveUsers(users: User[]) {
-    await delay(300);
-    localStorage.setItem('mb_users', JSON.stringify(users));
+  async createUser(user: User) {
+    checkSupabase();
+    const { error } = await supabase
+      .from('users')
+      .insert([user]);
+    if (error) throw error;
   },
 
   async getCurrentUser(): Promise<User | null> {
-    const user = localStorage.getItem('mb_current_user');
-    return user ? JSON.parse(user) : null;
+    const phone = localStorage.getItem('mb_session_phone');
+    if (!phone || !supabase) return null;
+    
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('phone', phone)
+        .single();
+      
+      if (error) {
+          localStorage.removeItem('mb_session_phone');
+          return null;
+      }
+      return data;
+    } catch (e) {
+      return null;
+    }
   },
 
   async updateUser(user: User) {
-    const users = await this.getUsers();
-    const index = users.findIndex(u => u.phone === user.phone);
-    if (index !== -1) {
-      users[index] = user;
-      await this.saveUsers(users);
-      // Nếu là user đang đăng nhập, cập nhật luôn session
-      const current = await this.getCurrentUser();
-      if (current && current.phone === user.phone) {
-        localStorage.setItem('mb_current_user', JSON.stringify(user));
-      }
-    }
+    checkSupabase();
+    const { error } = await supabase
+      .from('users')
+      .update({
+        name: user.name,
+        balance: user.balance,
+        avatar: user.avatar,
+        password: user.password,
+        banks: user.banks,
+        isAdmin: user.isAdmin
+      })
+      .eq('phone', user.phone);
+    if (error) throw error;
   },
 
   // --- TRANSACTION API ---
   async getTransactions(): Promise<TransactionRecord[]> {
-    await delay(400);
-    return JSON.parse(localStorage.getItem('mb_all_transactions') || '[]');
+    checkSupabase();
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('timestamp', { ascending: false });
+    if (error) throw error;
+    return data || [];
   },
 
   async createTransaction(tx: TransactionRecord) {
-    const txs = await this.getTransactions();
-    txs.push(tx);
-    localStorage.setItem('mb_all_transactions', JSON.stringify(txs));
+    checkSupabase();
+    const { error } = await supabase
+      .from('transactions')
+      .insert([tx]);
+    if (error) throw error;
   },
 
   async updateTransaction(tx: TransactionRecord) {
-    const txs = await this.getTransactions();
-    const index = txs.findIndex(t => t.id === tx.id);
-    if (index !== -1) {
-      txs[index] = tx;
-      localStorage.setItem('mb_all_transactions', JSON.stringify(txs));
-    }
+    checkSupabase();
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        status: tx.status,
+        rejectionReason: tx.rejectionReason
+      })
+      .eq('id', tx.id);
+    if (error) throw error;
   },
 
   // --- NOTIFICATION API ---
   async getNotifications(phone: string): Promise<AppNotification[]> {
-    await delay(300);
-    return JSON.parse(localStorage.getItem(`mb_notifs_${phone}`) || '[]');
+    checkSupabase();
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('phone', phone)
+      .order('timestamp', { ascending: false });
+    if (error) throw error;
+    return data || [];
   },
 
   async addNotification(phone: string, notif: AppNotification) {
-    const notifs = await this.getNotifications(phone);
-    notifs.push(notif);
-    localStorage.setItem(`mb_notifs_${phone}`, JSON.stringify(notifs));
+    checkSupabase();
+    const { error } = await supabase
+      .from('notifications')
+      .insert([{
+        id: notif.id,
+        phone: phone,
+        title: notif.title,
+        content: notif.content,
+        timestamp: notif.timestamp,
+        type: notif.type,
+        isRead: notif.isRead
+      }]);
+    if (error) throw error;
+  },
+
+  async markNotifsAsRead(phone: string) {
+    checkSupabase();
+    await supabase
+      .from('notifications')
+      .update({ isRead: true })
+      .eq('phone', phone);
   }
 };
