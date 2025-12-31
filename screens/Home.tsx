@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, ArrowDownCircle, Gift, Bell, Search, AlertCircle, X } from 'lucide-react';
-import { Screen, User, AppNotification } from '../types';
+import { PlusCircle, ArrowDownCircle, Gift, Bell, Search, AlertCircle, X, Clock, ChevronRight } from 'lucide-react';
+import { Screen, User, TransactionRecord } from '../types';
 import { APP_CONFIG } from '../constants';
 import { CloudAPI } from '../services/api';
 
@@ -13,18 +13,27 @@ interface HomeProps {
 const Home: React.FC<HomeProps> = ({ user, onNavigate }) => {
   const [showWarning, setShowWarning] = useState(false);
   const [hasNewNotif, setHasNewNotif] = useState(false);
+  const [recentTransactions, setRecentTransactions] = useState<TransactionRecord[]>([]);
 
   useEffect(() => {
-    const fetchNotifs = async () => {
+    const fetchData = async () => {
       try {
+        // Lấy thông báo
         const notifs = await CloudAPI.getNotifications(user.phone);
         setHasNewNotif(notifs.some(n => !n.isRead));
+        
+        // Lấy giao dịch gần đây của chính user này
+        const allTxs = await CloudAPI.getTransactions();
+        const userTxs = allTxs
+          .filter(t => t.userPhone === user.phone)
+          .slice(0, 3);
+        setRecentTransactions(userTxs);
       } catch (e) {
-        console.warn("Chưa cấu hình Supabase");
+        console.warn("Lỗi đồng bộ Home");
       }
     };
-    fetchNotifs();
-    const interval = setInterval(fetchNotifs, 5000);
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [user.phone]);
 
@@ -78,13 +87,14 @@ const Home: React.FC<HomeProps> = ({ user, onNavigate }) => {
         </div>
       )}
 
+      {/* Header Section */}
       <div className="bg-[#FF85A1] rounded-b-[40px] px-6 pt-12 pb-10 text-white shadow-xl shadow-[#FF85A1]/20">
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center space-x-3">
             <img 
               src={user.avatar} 
               alt="Avatar" 
-              className="w-12 h-12 rounded-full border-2 border-white/50"
+              className="w-12 h-12 rounded-full border-2 border-white/50 bg-white/20"
             />
             <div>
               <p className="text-xs text-white/80">Chào mẹ,</p>
@@ -109,12 +119,16 @@ const Home: React.FC<HomeProps> = ({ user, onNavigate }) => {
 
         <div className="bg-white/10 rounded-3xl p-6 backdrop-blur-md border border-white/20">
           <p className="text-sm text-white/80 font-medium">Số dư tài khoản</p>
-          <h2 className="text-3xl font-bold mt-1 tracking-wide">
-            {user.balance.toLocaleString('vi-VN')}đ
-          </h2>
+          <div className="flex items-end space-x-2">
+            <h2 className="text-3xl font-bold mt-1 tracking-wide">
+              {user.balance.toLocaleString('vi-VN')}
+            </h2>
+            <span className="mb-1.5 font-bold text-white/80">đ</span>
+          </div>
         </div>
       </div>
 
+      {/* Action Buttons */}
       <div className="px-6 -mt-6">
         <div className="bg-white rounded-3xl p-4 shadow-xl shadow-gray-200 flex justify-around items-center">
             <button onClick={() => handleAction('DEPOSIT')} className="flex flex-col items-center space-y-2 group">
@@ -133,31 +147,70 @@ const Home: React.FC<HomeProps> = ({ user, onNavigate }) => {
         </div>
       </div>
 
+      {/* Recent Transactions */}
       <div className="px-6 mt-8 space-y-4">
         <div className="flex justify-between items-center">
-          <h4 className="font-bold text-gray-800">Nổi bật cho mẹ</h4>
-          <button className="text-xs text-[#FF85A1] font-bold">Xem tất cả</button>
+          <h4 className="font-bold text-gray-800">Giao dịch gần đây</h4>
+          <button className="text-xs text-[#FF85A1] font-bold">Tất cả</button>
         </div>
+        
+        {recentTransactions.length === 0 ? (
+          <div className="bg-white rounded-3xl p-8 text-center border border-gray-50">
+            <Clock size={32} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-xs text-gray-400">Mẹ chưa có giao dịch nào</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {recentTransactions.map(tx => (
+              <div key={tx.id} className="bg-white p-4 rounded-2xl flex items-center justify-between shadow-sm border border-gray-50">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    tx.type === 'DEPOSIT' ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'
+                  }`}>
+                    {tx.type === 'DEPOSIT' ? <PlusCircle size={18} /> : <ArrowDownCircle size={18} />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">{tx.type === 'DEPOSIT' ? 'Nạp tiền' : 'Rút tiền'}</p>
+                    <p className="text-[10px] text-gray-400">{new Date(tx.timestamp).toLocaleString('vi-VN')}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-bold ${tx.type === 'DEPOSIT' ? 'text-green-500' : 'text-orange-500'}`}>
+                    {tx.type === 'DEPOSIT' ? '+' : '-'}{tx.amount.toLocaleString()}đ
+                  </p>
+                  <p className={`text-[9px] font-bold uppercase tracking-tighter ${
+                    tx.status === 'APPROVED' ? 'text-green-400' : 
+                    tx.status === 'REJECTED' ? 'text-red-400' : 'text-orange-400'
+                  }`}>
+                    {tx.status === 'PENDING' ? 'Chờ duyệt' : tx.status === 'APPROVED' ? 'Thành công' : 'Từ chối'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
+      {/* Promotion Banner */}
+      <div className="px-6 mt-8 space-y-4">
+        <div className="flex justify-between items-center">
+          <h4 className="font-bold text-gray-800">Ưu đãi hôm nay</h4>
+        </div>
         <div 
           onClick={() => onNavigate('GIFTS')}
           className="relative bg-gradient-to-br from-orange-400 to-[#FF85A1] rounded-3xl p-6 text-white overflow-hidden shadow-lg active:scale-[0.98] transition-transform cursor-pointer"
         >
           <div className="relative z-10 w-2/3">
-            <div className="flex items-center space-x-2 bg-white/20 w-fit px-3 py-1 rounded-full backdrop-blur-md mb-3">
-              <Gift size={16} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Ưu đãi độc quyền</span>
-            </div>
-            <h3 className="text-2xl font-bold leading-tight">Quà tặng 0 đồng cho bé yêu</h3>
-            <p className="text-white/80 text-xs mt-2">Hàng ngàn sản phẩm tã, sữa, đồ dùng cho mẹ và bé đang chờ bạn.</p>
-            <button className="mt-4 bg-white text-[#FF85A1] px-6 py-2 rounded-xl text-sm font-bold shadow-md">
+            <h3 className="text-xl font-bold leading-tight">Quà tặng 0 đồng cho mẹ & bé</h3>
+            <p className="text-white/80 text-[10px] mt-2">Hàng ngàn sản phẩm tã sữa đang chờ đón mẹ.</p>
+            <button className="mt-4 bg-white text-[#FF85A1] px-5 py-2 rounded-xl text-[11px] font-bold shadow-md">
                 Nhận ngay
             </button>
           </div>
           <img 
             src={APP_CONFIG.HOME_BANNER_IMAGE} 
             alt="Product" 
-            className="absolute -right-8 -bottom-8 w-48 h-48 opacity-40 rotate-12"
+            className="absolute -right-6 -bottom-6 w-40 h-40 opacity-30 rotate-12"
           />
         </div>
       </div>

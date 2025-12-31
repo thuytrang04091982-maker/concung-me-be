@@ -17,13 +17,15 @@ export const CloudAPI = {
       .select('*');
     if (error) {
         console.error("CloudAPI getUsers error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi lấy dữ liệu người dùng");
+        throw new Error(error.message);
     }
     return data || [];
   },
 
   async createUser(user: User) {
     checkSupabase();
+    
+    // Tạo payload chuẩn xác để tránh lỗi Schema
     const payload = {
         name: user.name,
         phone: user.phone,
@@ -39,11 +41,13 @@ export const CloudAPI = {
       .insert([payload]);
       
     if (error) {
-        console.error("CloudAPI createUser error:", JSON.stringify(error, null, 2));
-        let errorMsg = error.message;
-        if (error.details) errorMsg += ` - Chi tiết: ${error.details}`;
-        if (error.hint) errorMsg += ` (Gợi ý: ${error.hint})`;
-        throw new Error(errorMsg);
+        console.error("CloudAPI createUser detailed error:", JSON.stringify(error, null, 2));
+        
+        let msg = error.message;
+        if (error.details) msg += ` (Chi tiết: ${error.details})`;
+        if (error.hint) msg += ` (Gợi ý: ${error.hint})`;
+        
+        throw new Error(msg);
     }
   },
 
@@ -83,7 +87,7 @@ export const CloudAPI = {
       .eq('phone', user.phone);
     if (error) {
         console.error("CloudAPI updateUser error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi cập nhật người dùng");
+        throw new Error(error.message);
     }
   },
 
@@ -96,7 +100,7 @@ export const CloudAPI = {
       .order('timestamp', { ascending: false });
     if (error) {
         console.error("CloudAPI getTransactions error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi lấy danh sách giao dịch");
+        throw new Error(error.message);
     }
     return data || [];
   },
@@ -108,7 +112,7 @@ export const CloudAPI = {
       .insert([tx]);
     if (error) {
         console.error("CloudAPI createTransaction error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi tạo giao dịch");
+        throw new Error(error.message);
     }
   },
 
@@ -123,7 +127,7 @@ export const CloudAPI = {
       .eq('id', tx.id);
     if (error) {
         console.error("CloudAPI updateTransaction error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi cập nhật giao dịch");
+        throw new Error(error.message);
     }
   },
 
@@ -137,7 +141,7 @@ export const CloudAPI = {
       .order('timestamp', { ascending: false });
     if (error) {
         console.error("CloudAPI getNotifications error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi lấy thông báo");
+        throw new Error(error.message);
     }
     return data || [];
   },
@@ -157,7 +161,7 @@ export const CloudAPI = {
       }]);
     if (error) {
         console.error("CloudAPI addNotification error:", JSON.stringify(error, null, 2));
-        throw new Error(error.message || "Lỗi thêm thông báo");
+        throw new Error(error.message);
     }
   },
 

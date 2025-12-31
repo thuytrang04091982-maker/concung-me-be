@@ -23,7 +23,6 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(true);
   const [transactionType, setTransactionType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
-  // Helper function to extract error message safely
   const getErrorMessage = (e: any): string => {
     if (typeof e === 'string') return e;
     if (e && e.message) return e.message;
@@ -36,14 +35,12 @@ const App: React.FC = () => {
       try {
         const user = await CloudAPI.getCurrentUser();
         if (user) {
-          if (user.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
-            user.isAdmin = true;
-          }
+          if (user.phone === APP_CONFIG.MASTER_ADMIN_PHONE) user.isAdmin = true;
           setCurrentUser(user);
           setCurrentScreen('HOME');
         }
       } catch (e) {
-        console.error("Lỗi khởi tạo:", getErrorMessage(e));
+        console.error("Khởi tạo thất bại:", getErrorMessage(e));
       } finally {
         setIsSyncing(false);
       }
@@ -53,31 +50,21 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser) return;
-
     const syncInterval = setInterval(async () => {
       try {
         const users = await CloudAPI.getUsers();
         const freshData = users.find(u => u.phone === currentUser.phone);
         if (freshData) {
-          if (freshData.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
-            freshData.isAdmin = true;
-          }
-          if (JSON.stringify(freshData) !== JSON.stringify(currentUser)) {
-            setCurrentUser(freshData);
-          }
+          if (freshData.phone === APP_CONFIG.MASTER_ADMIN_PHONE) freshData.isAdmin = true;
+          if (JSON.stringify(freshData) !== JSON.stringify(currentUser)) setCurrentUser(freshData);
         }
-      } catch (e) {
-        console.warn("Mất kết nối Cloud tạm thời...");
-      }
-    }, 4000);
-
+      } catch (e) {}
+    }, 5000);
     return () => clearInterval(syncInterval);
   }, [currentUser]);
 
   const navigateTo = (screen: Screen, params?: any) => {
-    if (screen === 'TRANSACTION' && params?.type) {
-      setTransactionType(params.type);
-    }
+    if (screen === 'TRANSACTION' && params?.type) setTransactionType(params.type);
     setCurrentScreen(screen);
   };
 
@@ -89,11 +76,9 @@ const App: React.FC = () => {
       if (tx && tx.status === 'PENDING') {
         const users = await CloudAPI.getUsers();
         const user = users.find(u => u.phone === tx.userPhone);
-        
         if (user) {
           user.balance += (tx.type === 'DEPOSIT' ? tx.amount : -tx.amount);
           tx.status = 'APPROVED';
-          
           await CloudAPI.updateUser(user);
           await CloudAPI.updateTransaction(tx);
           await CloudAPI.addNotification(tx.userPhone, {
@@ -107,7 +92,7 @@ const App: React.FC = () => {
         }
       }
     } catch (e) {
-      alert("Lỗi phê duyệt: " + getErrorMessage(e));
+      alert("Lỗi duyệt: " + getErrorMessage(e));
     }
     setIsSyncing(false);
   };
@@ -169,9 +154,7 @@ const App: React.FC = () => {
               case 'REGISTER': return <Register onNavigate={navigateTo} onRegister={async (u) => {
                 setIsSyncing(true);
                 try {
-                  if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
-                    u.isAdmin = true;
-                  }
+                  if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) u.isAdmin = true;
                   await CloudAPI.createUser(u);
                   setCurrentUser(u);
                   localStorage.setItem('mb_session_phone', u.phone);
@@ -179,10 +162,11 @@ const App: React.FC = () => {
                 } catch (e: any) {
                   const errorMsg = getErrorMessage(e);
                   console.error("Lỗi đăng ký:", errorMsg);
-                  if (errorMsg.includes('duplicate key')) {
-                    alert("Số điện thoại này đã tồn tại trên Cloud!");
+                  
+                  if (errorMsg.includes('duplicate key') && errorMsg.includes('phone')) {
+                    alert("Số điện thoại này đã tồn tại trên Cloud mẹ nhé!");
                   } else {
-                    alert("Lỗi Cloud: " + errorMsg + "\n\n(Lưu ý: Nếu mẹ 'đăng ký số nào cũng bị', hãy kiểm tra xem Database Supabase của mẹ đã đủ các cột: name, phone, balance, password, avatar, banks, isAdmin chưa nhé!)");
+                    alert("❌ LỖI KẾT NỐI CLOUD:\n" + errorMsg + "\n\n💡 CÁCH SỬA: Mẹ hãy copy lại lệnh SQL 'Nuclear Fix' con vừa gửi, dán vào SQL Editor trong Supabase và nhấn RUN. Lệnh này sẽ dùng 'CASCADE' để xóa sạch các lỗi cũ!");
                   }
                 }
                 setIsSyncing(false);
@@ -193,19 +177,13 @@ const App: React.FC = () => {
                   const users = await CloudAPI.getUsers();
                   const u = users.find(user => user.phone === p && user.password === pass);
                   if (u) {
-                    if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
-                      u.isAdmin = true;
-                    }
+                    if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) u.isAdmin = true;
                     setCurrentUser(u);
                     localStorage.setItem('mb_session_phone', u.phone);
                     setCurrentScreen('HOME');
                     return true;
                   }
-                } catch (e) {
-                  console.error("Lỗi đăng nhập:", getErrorMessage(e));
-                } finally {
-                  setIsSyncing(false);
-                }
+                } catch (e) {} finally { setIsSyncing(false); }
                 return false;
               }} />;
               case 'HOME': return <Home user={currentUser!} onNavigate={navigateTo} />;
