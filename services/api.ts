@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 
 const checkSupabase = () => {
   if (!supabase) {
-    throw new Error("Supabase chưa được kết nối. Mẹ vui lòng kiểm tra lại cấu hình URL!");
+    throw new Error("Supabase chưa được kết nối.");
   }
 };
 
@@ -15,16 +15,36 @@ export const CloudAPI = {
     const { data, error } = await supabase
       .from('users')
       .select('*');
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI getUsers error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi lấy dữ liệu người dùng");
+    }
     return data || [];
   },
 
   async createUser(user: User) {
     checkSupabase();
+    const payload = {
+        name: user.name,
+        phone: user.phone,
+        balance: user.balance || 0,
+        avatar: user.avatar,
+        password: user.password,
+        banks: user.banks || [],
+        isAdmin: user.isAdmin || false
+    };
+    
     const { error } = await supabase
       .from('users')
-      .insert([user]);
-    if (error) throw error;
+      .insert([payload]);
+      
+    if (error) {
+        console.error("CloudAPI createUser error:", JSON.stringify(error, null, 2));
+        let errorMsg = error.message;
+        if (error.details) errorMsg += ` - Chi tiết: ${error.details}`;
+        if (error.hint) errorMsg += ` (Gợi ý: ${error.hint})`;
+        throw new Error(errorMsg);
+    }
   },
 
   async getCurrentUser(): Promise<User | null> {
@@ -57,11 +77,14 @@ export const CloudAPI = {
         balance: user.balance,
         avatar: user.avatar,
         password: user.password,
-        banks: user.banks,
+        banks: user.banks || [],
         isAdmin: user.isAdmin
       })
       .eq('phone', user.phone);
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI updateUser error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi cập nhật người dùng");
+    }
   },
 
   // --- TRANSACTION API ---
@@ -71,7 +94,10 @@ export const CloudAPI = {
       .from('transactions')
       .select('*')
       .order('timestamp', { ascending: false });
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI getTransactions error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi lấy danh sách giao dịch");
+    }
     return data || [];
   },
 
@@ -80,7 +106,10 @@ export const CloudAPI = {
     const { error } = await supabase
       .from('transactions')
       .insert([tx]);
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI createTransaction error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi tạo giao dịch");
+    }
   },
 
   async updateTransaction(tx: TransactionRecord) {
@@ -92,7 +121,10 @@ export const CloudAPI = {
         rejectionReason: tx.rejectionReason
       })
       .eq('id', tx.id);
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI updateTransaction error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi cập nhật giao dịch");
+    }
   },
 
   // --- NOTIFICATION API ---
@@ -103,7 +135,10 @@ export const CloudAPI = {
       .select('*')
       .eq('phone', phone)
       .order('timestamp', { ascending: false });
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI getNotifications error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi lấy thông báo");
+    }
     return data || [];
   },
 
@@ -120,14 +155,20 @@ export const CloudAPI = {
         type: notif.type,
         isRead: notif.isRead
       }]);
-    if (error) throw error;
+    if (error) {
+        console.error("CloudAPI addNotification error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || "Lỗi thêm thông báo");
+    }
   },
 
   async markNotifsAsRead(phone: string) {
     checkSupabase();
-    await supabase
+    const { error } = await supabase
       .from('notifications')
       .update({ isRead: true })
       .eq('phone', phone);
+    if (error) {
+        console.error("CloudAPI markNotifsAsRead error:", JSON.stringify(error, null, 2));
+    }
   }
 };

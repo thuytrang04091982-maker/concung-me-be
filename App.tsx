@@ -23,13 +23,19 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(true);
   const [transactionType, setTransactionType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
 
+  // Helper function to extract error message safely
+  const getErrorMessage = (e: any): string => {
+    if (typeof e === 'string') return e;
+    if (e && e.message) return e.message;
+    return JSON.stringify(e);
+  };
+
   useEffect(() => {
     const initApp = async () => {
       setIsSyncing(true);
       try {
         const user = await CloudAPI.getCurrentUser();
         if (user) {
-          // Kiểm tra Master Admin khi khôi phục session
           if (user.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
             user.isAdmin = true;
           }
@@ -37,7 +43,7 @@ const App: React.FC = () => {
           setCurrentScreen('HOME');
         }
       } catch (e) {
-        console.error("Lỗi khởi tạo:", e);
+        console.error("Lỗi khởi tạo:", getErrorMessage(e));
       } finally {
         setIsSyncing(false);
       }
@@ -45,7 +51,6 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
-  // Real-time Watcher
   useEffect(() => {
     if (!currentUser) return;
 
@@ -54,7 +59,6 @@ const App: React.FC = () => {
         const users = await CloudAPI.getUsers();
         const freshData = users.find(u => u.phone === currentUser.phone);
         if (freshData) {
-          // Luôn giữ quyền Master Admin nếu là số đặc biệt
           if (freshData.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
             freshData.isAdmin = true;
           }
@@ -103,7 +107,7 @@ const App: React.FC = () => {
         }
       }
     } catch (e) {
-      alert("Lỗi phê duyệt: " + e);
+      alert("Lỗi phê duyệt: " + getErrorMessage(e));
     }
     setIsSyncing(false);
   };
@@ -127,7 +131,7 @@ const App: React.FC = () => {
         });
       }
     } catch (e) {
-      alert("Lỗi từ chối: " + e);
+      alert("Lỗi từ chối: " + getErrorMessage(e));
     }
     setIsSyncing(false);
   };
@@ -165,7 +169,6 @@ const App: React.FC = () => {
               case 'REGISTER': return <Register onNavigate={navigateTo} onRegister={async (u) => {
                 setIsSyncing(true);
                 try {
-                  // Gán quyền Master Admin khi đăng ký số đặc biệt
                   if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
                     u.isAdmin = true;
                   }
@@ -173,8 +176,14 @@ const App: React.FC = () => {
                   setCurrentUser(u);
                   localStorage.setItem('mb_session_phone', u.phone);
                   setCurrentScreen('HOME');
-                } catch (e) {
-                  alert("Số điện thoại này đã tồn tại trên Cloud!");
+                } catch (e: any) {
+                  const errorMsg = getErrorMessage(e);
+                  console.error("Lỗi đăng ký:", errorMsg);
+                  if (errorMsg.includes('duplicate key')) {
+                    alert("Số điện thoại này đã tồn tại trên Cloud!");
+                  } else {
+                    alert("Lỗi Cloud: " + errorMsg + "\n\n(Lưu ý: Nếu mẹ 'đăng ký số nào cũng bị', hãy kiểm tra xem Database Supabase của mẹ đã đủ các cột: name, phone, balance, password, avatar, banks, isAdmin chưa nhé!)");
+                  }
                 }
                 setIsSyncing(false);
               }} />;
@@ -184,7 +193,6 @@ const App: React.FC = () => {
                   const users = await CloudAPI.getUsers();
                   const u = users.find(user => user.phone === p && user.password === pass);
                   if (u) {
-                    // Gán quyền Master Admin khi đăng nhập số đặc biệt
                     if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
                       u.isAdmin = true;
                     }
@@ -194,7 +202,7 @@ const App: React.FC = () => {
                     return true;
                   }
                 } catch (e) {
-                  console.error(e);
+                  console.error("Lỗi đăng nhập:", getErrorMessage(e));
                 } finally {
                   setIsSyncing(false);
                 }
