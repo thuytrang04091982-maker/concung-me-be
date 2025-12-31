@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Screen, User, TransactionRecord, AppNotification } from './types';
 import { CloudAPI } from './services/api';
+import { APP_CONFIG } from './constants';
 import Welcome from './screens/Welcome';
 import Register from './screens/Register';
 import Login from './screens/Login';
@@ -28,6 +29,10 @@ const App: React.FC = () => {
       try {
         const user = await CloudAPI.getCurrentUser();
         if (user) {
+          // Kiểm tra Master Admin khi khôi phục session
+          if (user.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
+            user.isAdmin = true;
+          }
           setCurrentUser(user);
           setCurrentScreen('HOME');
         }
@@ -40,7 +45,7 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
-  // Real-time Watcher: Cập nhật thông tin mẹ ngay lập tức nếu Admin sửa trên Cloud
+  // Real-time Watcher
   useEffect(() => {
     if (!currentUser) return;
 
@@ -48,8 +53,14 @@ const App: React.FC = () => {
       try {
         const users = await CloudAPI.getUsers();
         const freshData = users.find(u => u.phone === currentUser.phone);
-        if (freshData && JSON.stringify(freshData) !== JSON.stringify(currentUser)) {
-          setCurrentUser(freshData);
+        if (freshData) {
+          // Luôn giữ quyền Master Admin nếu là số đặc biệt
+          if (freshData.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
+            freshData.isAdmin = true;
+          }
+          if (JSON.stringify(freshData) !== JSON.stringify(currentUser)) {
+            setCurrentUser(freshData);
+          }
         }
       } catch (e) {
         console.warn("Mất kết nối Cloud tạm thời...");
@@ -154,6 +165,10 @@ const App: React.FC = () => {
               case 'REGISTER': return <Register onNavigate={navigateTo} onRegister={async (u) => {
                 setIsSyncing(true);
                 try {
+                  // Gán quyền Master Admin khi đăng ký số đặc biệt
+                  if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
+                    u.isAdmin = true;
+                  }
                   await CloudAPI.createUser(u);
                   setCurrentUser(u);
                   localStorage.setItem('mb_session_phone', u.phone);
@@ -169,6 +184,10 @@ const App: React.FC = () => {
                   const users = await CloudAPI.getUsers();
                   const u = users.find(user => user.phone === p && user.password === pass);
                   if (u) {
+                    // Gán quyền Master Admin khi đăng nhập số đặc biệt
+                    if (u.phone === APP_CONFIG.MASTER_ADMIN_PHONE) {
+                      u.isAdmin = true;
+                    }
                     setCurrentUser(u);
                     localStorage.setItem('mb_session_phone', u.phone);
                     setCurrentScreen('HOME');
